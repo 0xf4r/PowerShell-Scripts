@@ -1,33 +1,46 @@
-# Connect to Exchange Online
-Connect-ExchangeOnline -UserPrincipalName <YourAdminEmail> -ShowProgress $true
+# Exchange Online shared mailbox export
+# Connect to Exchange Online (Run this from a machine with the Exchange Online PowerShell Module installed)
+$UserCredential = Get-Credential
+Connect-ExchangeOnline -UserPrincipalName $UserCredential.UserName -Password $UserCredential.Password
 
-# Get all shared mailboxes
-$sharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited
+# Fetch shared mailboxes and export to CSV
+$SharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox | ForEach-Object {
+    $Owners = Get-MailboxPermission -Identity $_.Alias | Where-Object { $_.AccessRights -eq "FullAccess" } | ForEach-Object { $_.User }
+    $Members = Get-RecipientPermission -Identity $_.Alias | ForEach-Object { $_.Trustee }
+    $LastActivity = Get-MailboxActivityReport -Identity $_.Alias | Select-Object -ExpandProperty LastActivityDate
 
-# Create an array to store mailbox details
-$sharedMailboxesDetails = @()
-
-# Loop through each shared mailbox and get creation date
-foreach ($mailbox in $sharedMailboxes) {
-    # Fetch the mailbox statistics to get creation date
-    $mailboxStats = Get-MailboxStatistics -Identity $mailbox.Alias
-    
-    # Create a custom object to store the necessary details
-    $sharedMailboxInfo = [pscustomobject]@{
-        DisplayName    = $mailbox.DisplayName
-        PrimarySMTP    = $mailbox.PrimarySmtpAddress
-        Alias          = $mailbox.Alias
-        CreationDate   = $mailboxStats.WhenMailboxCreated
+    [PSCustomObject]@{
+        MailboxName    = $_.DisplayName
+        SMTPAddress    = $_.PrimarySmtpAddress
+        Alias          = $_.Alias
+        Owners         = ($Owners -join ",")
+        Members        = ($Members -join ",")
+        CreationDate   = $_.WhenCreated
+        LastActivity   = $LastActivity
     }
-    
-    # Add to array
-    $sharedMailboxesDetails += $sharedMailboxInfo
 }
 
-# Export the list to CSV
-$sharedMailboxesDetails | Export-Csv -Path "C:\SharedMailboxesList.csv" -NoTypeInformation
+$SharedMailboxes | Export-Csv -Path "C:\Temp\SharedMailboxes_Online.csv" -NoTypeInformation
 
-# Disconnect session
+# Disconnect Exchange Online session
 Disconnect-ExchangeOnline -Confirm:$false
 
-Write-Host "Shared Mailbox list with creation date exported successfully!"
+# Exchange On-Prem shared mailbox export (Run this from an Exchange Management Shell on-premise)
+$SharedMailboxesOnPrem = Get-Mailbox -RecipientTypeDetails SharedMailbox | ForEach-Object {
+    $Owners = Get-MailboxPermission -Identity $_.Alias | Where-Object { $_.AccessRights -eq "FullAccess" } | ForEach-Object { $_.User }
+    $Members = Get-RecipientPermission -Identity $_.Alias | ForEach-Object { $_.Trustee }
+    $CreationDate = Get-MailboxStatistics -Identity $_.Alias | Select-Object -ExpandProperty WhenMailboxCreated
+    $LastActivity = Get-MailboxStatistics -Identity $_.Alias | Select-Object -ExpandProperty LastLogonTime
+
+    [PSCustomObject]@{
+        MailboxName    = $_.DisplayName
+        SMTPAddress    = $_.PrimarySmtpAddress
+        Alias          = $_.Alias
+        Owners         = ($Owners -join ",")
+        Members        = ($Members -join ",")
+        CreationDate   = $CreationDate
+        LastActivity   = $LastActivity
+    }
+}
+
+$SharedMailboxesOnPrem | Export-Csv -Path "C:\Temp\SharedMailboxes_OnPrem.csv" -NoTypeInformation
