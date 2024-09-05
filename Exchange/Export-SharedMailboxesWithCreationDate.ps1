@@ -44,3 +44,8 @@ $SharedMailboxesOnPrem = Get-Mailbox -RecipientTypeDetails SharedMailbox | ForEa
 }
 
 $SharedMailboxesOnPrem | Export-Csv -Path "C:\Temp\SharedMailboxes_OnPrem.csv" -NoTypeInformation
+
+
+Connect-ExchangeOnline
+
+Get-Mailbox -ResultSize Unlimited | select Displayname, PrimarySmtpAddress, RecipientTypeDetails | Export-Csv "C:\mailbox_report.csv" -NoTypeInformation
