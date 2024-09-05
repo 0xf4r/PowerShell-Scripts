@@ -49,3 +49,45 @@ $SharedMailboxesOnPrem | Export-Csv -Path "C:\Temp\SharedMailboxes_OnPrem.csv" -
 Connect-ExchangeOnline
 
 Get-Mailbox -ResultSize Unlimited | select Displayname, PrimarySmtpAddress, RecipientTypeDetails | Export-Csv "C:\mailbox_report.csv" -NoTypeInformation
+
+
+# Exchange Online shared mailbox export
+$UserCredential = Get-Credential
+Connect-ExchangeOnline -UserPrincipalName $UserCredential.UserName -Password $UserCredential.Password
+
+# Fetch shared mailboxes and distribution lists
+$Mailboxes = Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox, MailUniversalDistributionGroup | ForEach-Object {
+    
+    # Fetching mailbox permissions (Owners)
+    $Owners = Get-MailboxPermission $_.PrimarySmtpAddress | Where-Object { $_.AccessRights -eq "FullAccess" -and $_.IsInherited -eq $false } | ForEach-Object { $_.User }
+
+    # Fetching members (only applicable for Distribution Lists)
+    $Members = if ($_.RecipientTypeDetails -eq 'MailUniversalDistributionGroup') {
+        Get-DistributionGroupMember $_.PrimarySmtpAddress | ForEach-Object { $_.PrimarySmtpAddress }
+    } else {
+        @() # No members for shared mailboxes
+    }
+
+    # Fetching last activity and creation date
+    $MailboxStats = Get-MailboxStatistics $_.PrimarySmtpAddress
+    $LastActivity = $MailboxStats.LastLogonTime
+    $CreationDate = $MailboxStats.WhenMailboxCreated
+
+    # Create the output object
+    [PSCustomObject]@{
+        MailboxName    = $_.DisplayName
+        SMTPAddress    = $_.PrimarySmtpAddress
+        RecipientType  = $_.RecipientTypeDetails
+        Owners         = ($Owners -join ",")
+        Members        = ($Members -join ",")
+        CreationDate   = $CreationDate
+        LastActivity   = $LastActivity
+    }
+}
+
+# Export the results to CSV
+$Mailboxes | Export-Csv -Path "C:\Temp\SharedMailboxes_DistributionLists.csv" -NoTypeInformation
+
+# Disconnect Exchange Online session
+Disconnect-ExchangeOnline -Confirm:$false
+
