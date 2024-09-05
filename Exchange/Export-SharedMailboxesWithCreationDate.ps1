@@ -5,9 +5,9 @@ Connect-ExchangeOnline -UserPrincipalName $UserCredential.UserName -Password $Us
 
 # Fetch shared mailboxes and export to CSV
 $SharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox | ForEach-Object {
-    $Owners = Get-MailboxPermission -Identity $_.Alias | Where-Object { $_.AccessRights -eq "FullAccess" } | ForEach-Object { $_.User }
-    $Members = Get-RecipientPermission -Identity $_.Alias | ForEach-Object { $_.Trustee }
-    $LastActivity = Get-MailboxActivityReport -Identity $_.Alias | Select-Object -ExpandProperty LastActivityDate
+    $Owners = Get-MailboxPermission $_.PrimarySmtpAddress | Where-Object { $_.AccessRights -eq "FullAccess" } | ForEach-Object { $_.User }
+    $Members = Get-RecipientPermission $_.PrimarySmtpAddress | ForEach-Object { $_.Trustee }
+    $LastActivity = Get-MailboxStatistics $_.PrimarySmtpAddress | Select-Object -ExpandProperty LastLogonTime
 
     [PSCustomObject]@{
         MailboxName    = $_.DisplayName
@@ -27,10 +27,10 @@ Disconnect-ExchangeOnline -Confirm:$false
 
 # Exchange On-Prem shared mailbox export (Run this from an Exchange Management Shell on-premise)
 $SharedMailboxesOnPrem = Get-Mailbox -RecipientTypeDetails SharedMailbox | ForEach-Object {
-    $Owners = Get-MailboxPermission -Identity $_.Alias | Where-Object { $_.AccessRights -eq "FullAccess" } | ForEach-Object { $_.User }
-    $Members = Get-RecipientPermission -Identity $_.Alias | ForEach-Object { $_.Trustee }
-    $CreationDate = Get-MailboxStatistics -Identity $_.Alias | Select-Object -ExpandProperty WhenMailboxCreated
-    $LastActivity = Get-MailboxStatistics -Identity $_.Alias | Select-Object -ExpandProperty LastLogonTime
+    $Owners = Get-MailboxPermission $_.PrimarySmtpAddress | Where-Object { $_.AccessRights -eq "FullAccess" } | ForEach-Object { $_.User }
+    $Members = Get-RecipientPermission $_.PrimarySmtpAddress | ForEach-Object { $_.Trustee }
+    $CreationDate = Get-MailboxStatistics $_.PrimarySmtpAddress | Select-Object -ExpandProperty WhenMailboxCreated
+    $LastActivity = Get-MailboxStatistics $_.PrimarySmtpAddress | Select-Object -ExpandProperty LastLogonTime
 
     [PSCustomObject]@{
         MailboxName    = $_.DisplayName
