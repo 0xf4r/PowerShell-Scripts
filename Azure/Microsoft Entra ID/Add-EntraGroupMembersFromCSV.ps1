@@ -36,3 +36,4 @@ foreach ($member in $members) {
         Write-Host "Failed to add $member to $groupName. Error: $_"
     }
 }
+
