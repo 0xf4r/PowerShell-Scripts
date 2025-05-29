@@ -1,5 +1,103 @@
 # Audit-ADUsers.ps1
 # Purpose: Extract user account details from Active Directory for auditing unused accounts
+# Author: Combined and optimized by xAI
+# Date: May 29, 2025
+
+# Import ActiveDirectory module
+try {
+    Import-Module ActiveDirectory -ErrorAction Stop
+}
+catch {
+    Write-Host "Error: Cannot load ActiveDirectory module. Ensure it is installed." -ForegroundColor Red
+    exit
+}
+
+# Configurable parameters
+$Domain = "DC=abc,DC=example,DC=com"  # Modify to your domain, e.g., DC=yourdomain,DC=com
+$OUPath = ""  # Leave empty for entire domain or set to OU, e.g., "OU=Users,DC=example,DC=com"
+$DomainName = ($Domain -split ',DC=' | Select-Object -Skip 1) -join '.'  # Extracts e.g., abc.example.com
+$OutputCSV = "$PSScriptRoot\$($DomainName)_ADUserAudit_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+$LogFile = "$PSScriptRoot\ADUserAudit_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+
+# Simple log function
+function Write-Log {
+    param($Message)
+    $LogMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
+    try {
+        Add-Content -Path $LogFile -Value $LogMessage -ErrorAction Stop
+    }
+    catch {
+        Write-Host "Warning: Could not write to log: $LogFile" -ForegroundColor Yellow
+    }
+}
+
+# Start logging
+Write-Log "Starting AD user audit script"
+Write-Log "Script directory: $PSScriptRoot"
+
+# Verify output directory
+if (-not (Test-Path -Path $PSScriptRoot -PathType Container)) {
+    Write-Log "Error: Script directory ($PSScriptRoot) is not accessible"
+    Write-Host "Error: Script directory is not accessible." -ForegroundColor Red
+    exit
+}
+
+try {
+    # Set search base
+    $SearchBase = if ($OUPath) { $OUPath } else { $Domain }
+    Write-Log "Querying users from: $SearchBase"
+
+    # Get AD users
+    $Users = Get-ADUser -Filter * -SearchBase $SearchBase -Properties SamAccountName,DisplayName,LastLogonDate,WhenCreated,DistinguishedName,Description,Enabled,PasswordLastSet,UserPrincipalName -ErrorAction Stop
+
+    if (-not $Users) {
+        Write-Log "No users found in: $SearchBase"
+        Write-Host "No users found. Check your domain or OU path." -ForegroundColor Yellow
+        exit
+    }
+
+    # Process users
+    $UserData = $Users | ForEach-Object {
+        [PSCustomObject]@{
+            SamAccountName    = $_.SamAccountName ?? ""
+            DisplayName       = $_.DisplayName ?? ""
+            UserPrincipalName = $_.UserPrincipalName ?? ""
+            WhenCreated       = if ($_.WhenCreated) { $_.WhenCreated.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
+            LastLogonDate     = if ($_.LastLogonDate) { $_.LastLogonDate.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
+            PasswordLastSet   = if ($_.PasswordLastSet) { $_.PasswordLastSet.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
+            AccountStatus     = if ($null -ne $_.Enabled) { if ($_.Enabled) { "Enabled" } else { "Disabled" } } else { "" }
+            OUPath            = if ($_.DistinguishedName) { ($_.DistinguishedName -split ',',2)[1] } else { "" }
+            Action            = ""
+            Description       = $_.Description ?? ""
+            InteractiveLogin  = ""  # No standard AD attribute for this
+        }
+    }
+
+    # Export to CSV
+    $UserCount = $UserData.Count
+    Write-Log "Exporting $UserCount users to: $OutputCSV"
+    $UserData | Export-Csv -Path $OutputCSV -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+    Write-Log "Successfully exported $UserCount users"
+    Write-Host "Audit completed. $UserCount users exported to $OutputCSV"
+    Write-Host "Log file: $LogFile"
+}
+catch {
+    Write-Log "Error: $($_.Exception.Message)"
+    Write-Host "Error occurred. Check log file: $LogFile" -ForegroundColor Red
+    exit
+}
+finally {
+    Write-Log "Script completed"
+}
+
+
+
+
+
+
+
+# Audit-ADUsers.ps1
+# Purpose: Extract user account details from Active Directory for auditing unused accounts
 # Author: 0xf4r
 # Date: May 28, 2025
 
